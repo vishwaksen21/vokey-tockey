@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
+import config from '../config';
 
 /**
  * Custom hook to manage WebSocket connection for room signaling
@@ -49,16 +50,20 @@ const useRoomWebSocket = (roomId) => {
     setConnectionStatus('connecting');
     setError(null);
 
-    const wsUrl = import.meta.env.VITE_BACKEND_WS_URL || 'ws://localhost:8000';
+    const wsUrl = config.backendWsUrl;
     const url = `${wsUrl}/ws/rooms/${roomId}`;
 
-    console.log('Connecting to WebSocket:', url);
+    console.log('=== WebSocket Connection Debug ===');
+    console.log('Environment:', import.meta.env.MODE);
+    console.log('VITE_BACKEND_WS_URL:', import.meta.env.VITE_BACKEND_WS_URL);
+    console.log('Using URL:', url);
+    console.log('==================================');
 
     try {
       const ws = new WebSocket(url);
 
       ws.onopen = () => {
-        console.log('WebSocket connected');
+        console.log('✅ WebSocket connected successfully to:', url);
         setIsConnected(true);
         setConnectionStatus('connected');
         reconnectAttemptsRef.current = 0;
