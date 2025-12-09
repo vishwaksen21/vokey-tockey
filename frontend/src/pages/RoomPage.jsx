@@ -109,6 +109,16 @@ const RoomPage = () => {
   const status = getStatusDisplay();
   const participantCount = 1 + Object.keys(peers).length;
 
+  // Debug logging
+  console.log('=== RoomPage Debug ===');
+  console.log('clientId:', signalingSocket.clientId);
+  console.log('isConnected:', signalingSocket.isConnected);
+  console.log('otherPeers:', signalingSocket.otherPeers);
+  console.log('peers (WebRTC):', Object.keys(peers));
+  console.log('participantCount:', participantCount);
+  console.log('localStream:', localStream);
+  console.log('=====================');
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 p-4">
       <div className="max-w-6xl mx-auto">
