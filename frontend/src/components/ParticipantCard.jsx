@@ -15,12 +15,20 @@ const ParticipantCard = ({
   // Play remote audio stream
   useEffect(() => {
     if (audioRef.current && stream && !isLocal) {
-      audioRef.current.srcObject = stream;
-      audioRef.current.play().catch(err => {
-        console.error('Error playing audio:', err);
+      console.log(`📢 Setting up audio for ${clientId}:`, {
+        hasAudioTracks: stream.getAudioTracks().length,
+        audioTrackEnabled: stream.getAudioTracks()[0]?.enabled,
+        audioTrackReadyState: stream.getAudioTracks()[0]?.readyState
       });
+      
+      audioRef.current.srcObject = stream;
+      audioRef.current.play()
+        .then(() => console.log(`✅ Audio playing for ${clientId}`))
+        .catch(err => {
+          console.error(`❌ Error playing audio for ${clientId}:`, err);
+        });
     }
-  }, [stream, isLocal]);
+  }, [stream, isLocal, clientId]);
 
   // Generate a display name from client ID
   const getDisplayName = (id) => {

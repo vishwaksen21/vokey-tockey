@@ -89,8 +89,10 @@ const useWebRTC = (clientId, signalingSocket) => {
     if (localStreamRef.current) {
       localStreamRef.current.getTracks().forEach(track => {
         pc.addTrack(track, localStreamRef.current);
-        console.log('Added local track to peer connection:', track.kind);
+        console.log(`✅ Added local ${track.kind} track to peer connection for`, peerId);
       });
+    } else {
+      console.error('❌ No local stream available when creating peer connection for', peerId);
     }
 
     // Handle ICE candidates
@@ -107,7 +109,8 @@ const useWebRTC = (clientId, signalingSocket) => {
 
     // Handle remote stream
     pc.ontrack = (event) => {
-      console.log('Received remote track from', peerId, event.streams[0]);
+      console.log(`✅ Received remote ${event.track.kind} track from`, peerId);
+      console.log('Remote stream:', event.streams[0]);
       
       setPeers(prev => ({
         ...prev,
@@ -257,10 +260,15 @@ const useWebRTC = (clientId, signalingSocket) => {
       const peerId = message.clientId;
       if (peerId !== clientId) {
         console.log('New peer joined:', peerId);
-        // Create offer to new peer
-        if (localStreamRef.current) {
-          createOffer(peerId);
-        }
+        // Create offer to new peer - delay slightly to ensure they're ready
+        setTimeout(() => {
+          if (localStreamRef.current) {
+            console.log('Creating offer to new peer (microphone ready):', peerId);
+            createOffer(peerId);
+          } else {
+            console.warn('Cannot create offer yet, microphone not ready for:', peerId);
+          }
+        }, 1000); // Wait 1 second for new peer to initialize
       }
     };
 
@@ -315,9 +323,17 @@ const useWebRTC = (clientId, signalingSocket) => {
     removePeer,
   ]);
 
-  // When other peers list changes, create connections
+  // When other peers list changes OR when microphone becomes available, create connections
   useEffect(() => {
-    if (!signalingSocket.otherPeers || !localStreamRef.current || !clientId) return;
+    if (!signalingSocket.otherPeers || !clientId) {
+      return;
+    }
+
+    // Only proceed if we have a local stream
+    if (!localStreamRef.current) {
+      console.log('Waiting for microphone before creating peer connections...');
+      return;
+    }
 
     // Create offers to existing peers when we join
     signalingSocket.otherPeers.forEach(peerId => {
@@ -326,7 +342,7 @@ const useWebRTC = (clientId, signalingSocket) => {
         createOffer(peerId);
       }
     });
-  }, [signalingSocket.otherPeers, clientId, createOffer]);
+  }, [signalingSocket.otherPeers, clientId, createOffer, localStream]); // Added localStream as dependency
 
   // Cleanup on unmount
   useEffect(() => {
