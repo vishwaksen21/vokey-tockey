@@ -172,6 +172,21 @@ async def health_check():
     }
 
 
+@app.get("/debug/rooms")
+async def debug_rooms():
+    """Debug endpoint to see active rooms"""
+    room_details = {}
+    for room_id, clients in rooms.items():
+        room_details[room_id] = {
+            "client_count": len(clients),
+            "client_ids": list(client_ids.get(room_id, {}).keys())
+        }
+    return {
+        "total_rooms": len(rooms),
+        "rooms": room_details
+    }
+
+
 @app.get("/rooms/{room_id}/info")
 async def get_room_info(room_id: str):
     """
