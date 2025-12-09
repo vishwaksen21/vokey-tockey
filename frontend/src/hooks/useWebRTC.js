@@ -40,7 +40,10 @@ const useWebRTC = (clientId, signalingSocket) => {
         } 
       });
 
-      console.log('Microphone access granted');
+      console.log('✅ Microphone access granted');
+      console.log('🎤 Microphone initialized with', stream.getAudioTracks().length, 'audio tracks');
+      console.log('Audio track details:', stream.getAudioTracks()[0]?.getSettings());
+      
       localStreamRef.current = stream;
       setLocalStream(stream);
       setMicPermissionGranted(true);
@@ -87,9 +90,17 @@ const useWebRTC = (clientId, signalingSocket) => {
 
     // Add local stream to connection
     if (localStreamRef.current) {
-      localStreamRef.current.getTracks().forEach(track => {
-        pc.addTrack(track, localStreamRef.current);
-        console.log(`✅ Added local ${track.kind} track to peer connection for`, peerId);
+      const tracks = localStreamRef.current.getTracks();
+      console.log(`Adding ${tracks.length} tracks to peer connection for`, peerId);
+      
+      tracks.forEach(track => {
+        const sender = pc.addTrack(track, localStreamRef.current);
+        console.log(`✅ Added local ${track.kind} track to peer connection for ${peerId}:`, {
+          trackId: track.id,
+          enabled: track.enabled,
+          readyState: track.readyState,
+          senderId: sender.track?.id
+        });
       });
     } else {
       console.error('❌ No local stream available when creating peer connection for', peerId);
@@ -110,17 +121,32 @@ const useWebRTC = (clientId, signalingSocket) => {
     // Handle remote stream
     pc.ontrack = (event) => {
       console.log(`✅ Received remote ${event.track.kind} track from`, peerId);
+      console.log('Remote track details:', {
+        trackId: event.track.id,
+        enabled: event.track.enabled,
+        readyState: event.track.readyState,
+        muted: event.track.muted
+      });
       console.log('Remote stream:', event.streams[0]);
+      console.log('Remote stream tracks:', event.streams[0].getTracks().map(t => ({
+        kind: t.kind,
+        id: t.id,
+        enabled: t.enabled,
+        readyState: t.readyState
+      })));
       
-      setPeers(prev => ({
-        ...prev,
-        [peerId]: {
-          ...prev[peerId],
-          connection: pc,
-          stream: event.streams[0],
-          isSpeaking: false,
-        }
-      }));
+      // Preserve existing peer state when adding stream
+      setPeers(prev => {
+        const existing = prev[peerId] || {};
+        return {
+          ...prev,
+          [peerId]: {
+            ...existing,
+            connection: pc,
+            stream: event.streams[0],
+          }
+        };
+      });
     };
 
     // Handle connection state changes
@@ -138,22 +164,13 @@ const useWebRTC = (clientId, signalingSocket) => {
       console.log('ICE connection state for', peerId, ':', pc.iceConnectionState);
     };
 
-    // Handle negotiation needed (for renegotiation)
-    pc.onnegotiationneeded = async () => {
-      try {
-        console.log('Negotiation needed for', peerId);
-        // Only create offer if we're the one initiating the connection
-        // This prevents both sides from creating offers simultaneously
-      } catch (error) {
-        console.error('Error during negotiation:', error);
-      }
-    };
-
     peerConnectionsRef.current[peerId] = pc;
     
     // Add pending ICE candidates if any
     if (pendingCandidatesRef.current[peerId]) {
+      console.log(`Adding ${pendingCandidatesRef.current[peerId].length} pending ICE candidates for`, peerId);
       pendingCandidatesRef.current[peerId].forEach(candidate => {
+        // Candidates are already in correct format, don't wrap
         pc.addIceCandidate(candidate).catch(err => {
           console.error('Error adding pending ICE candidate:', err);
         });
@@ -188,10 +205,23 @@ const useWebRTC = (clientId, signalingSocket) => {
   const handleOffer = useCallback(async (fromPeerId, offer) => {
     try {
       console.log('Received offer from', fromPeerId);
+      
+      // Ensure we have local stream before handling offer
+      if (!localStreamRef.current) {
+        console.error('❌ Cannot handle offer - no local stream yet for', fromPeerId);
+        return;
+      }
+      
       const pc = createPeerConnection(fromPeerId);
 
-      await pc.setRemoteDescription(new RTCSessionDescription(offer));
+      try {
+        await pc.setRemoteDescription(new RTCSessionDescription(offer));
+      } catch (err) {
+        console.warn('⚠️ Ignoring setRemoteDescription error (likely race condition):', err);
+        return;
+      }
       
+      console.log('Creating answer for', fromPeerId);
       const answer = await pc.createAnswer();
       await pc.setLocalDescription(answer);
 
@@ -213,7 +243,11 @@ const useWebRTC = (clientId, signalingSocket) => {
       const pc = peerConnectionsRef.current[fromPeerId];
       
       if (pc) {
-        await pc.setRemoteDescription(new RTCSessionDescription(answer));
+        try {
+          await pc.setRemoteDescription(new RTCSessionDescription(answer));
+        } catch (err) {
+          console.warn('⚠️ Ignoring setRemoteDescription error (likely race condition):', err);
+        }
       } else {
         console.error('No peer connection found for', fromPeerId);
       }
@@ -228,7 +262,8 @@ const useWebRTC = (clientId, signalingSocket) => {
       const pc = peerConnectionsRef.current[fromPeerId];
       
       if (pc && pc.remoteDescription) {
-        await pc.addIceCandidate(new RTCIceCandidate(candidate));
+        // ICE candidate from server is already JSON, don't wrap again
+        await pc.addIceCandidate(candidate);
         console.log('Added ICE candidate from', fromPeerId);
       } else {
         // Store candidate to add later when remote description is set
@@ -236,7 +271,8 @@ const useWebRTC = (clientId, signalingSocket) => {
         if (!pendingCandidatesRef.current[fromPeerId]) {
           pendingCandidatesRef.current[fromPeerId] = [];
         }
-        pendingCandidatesRef.current[fromPeerId].push(new RTCIceCandidate(candidate));
+        // Store as-is, already JSON format
+        pendingCandidatesRef.current[fromPeerId].push(candidate);
       }
     } catch (error) {
       console.error('Error handling ICE candidate:', error);
@@ -271,15 +307,23 @@ const useWebRTC = (clientId, signalingSocket) => {
       const peerId = message.clientId;
       if (peerId !== clientId) {
         console.log('New peer joined:', peerId);
-        // Create offer to new peer - delay slightly to ensure they're ready
-        setTimeout(() => {
-          if (localStreamRef.current) {
-            console.log('Creating offer to new peer (microphone ready):', peerId);
-            createOffer(peerId);
-          } else {
-            console.warn('Cannot create offer yet, microphone not ready for:', peerId);
-          }
-        }, 1000); // Wait 1 second for new peer to initialize
+        
+        // Only create offer if our clientId is lexicographically smaller
+        // This prevents double-offer race condition
+        if (clientId < peerId) {
+          console.log('📞 We initiate connection (clientId < peerId)');
+          // Delay slightly to ensure they're ready
+          setTimeout(() => {
+            if (localStreamRef.current) {
+              console.log('Creating offer to new peer (microphone ready):', peerId);
+              createOffer(peerId);
+            } else {
+              console.warn('Cannot create offer yet, microphone not ready for:', peerId);
+            }
+          }, 1000);
+        } else {
+          console.log('📱 Waiting for their offer (clientId > peerId)');
+        }
       }
     };
 
@@ -346,14 +390,31 @@ const useWebRTC = (clientId, signalingSocket) => {
       return;
     }
 
-    // Create offers to existing peers when we join
+    // Create offers to existing peers when we join (only if our clientId is smaller)
     signalingSocket.otherPeers.forEach(peerId => {
       if (!peerConnectionsRef.current[peerId]) {
-        console.log('Creating connection to existing peer:', peerId);
+        // Only create offer if our clientId is lexicographically smaller
+        if (clientId < peerId) {
+          console.log('📞 Creating connection to existing peer (clientId < peerId):', peerId);
+          createOffer(peerId);
+        } else {
+          console.log('📱 Waiting for offer from existing peer (clientId > peerId):', peerId);
+        }
+      }
+    });
+  }, [signalingSocket.otherPeers, clientId, createOffer, localStream]);
+  
+  // When microphone becomes available, retry connections for peers we couldn't connect to
+  useEffect(() => {
+    if (!localStreamRef.current || !clientId || !signalingSocket.otherPeers) return;
+
+    signalingSocket.otherPeers.forEach(peerId => {
+      if (!peerConnectionsRef.current[peerId] && clientId < peerId) {
+        console.log('🔄 Retrying connection after mic ready:', peerId);
         createOffer(peerId);
       }
     });
-  }, [signalingSocket.otherPeers, clientId, createOffer, localStream]); // Added localStream as dependency
+  }, [localStream, clientId, signalingSocket.otherPeers, createOffer]);
 
   // Cleanup on unmount
   useEffect(() => {
