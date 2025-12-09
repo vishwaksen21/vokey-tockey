@@ -78,18 +78,29 @@ const useRoomWebSocket = (roomId) => {
           switch (message.type) {
             case 'join':
               // Confirmation that we joined the room
+              console.log('✅ Joined room - clientId:', message.clientId, 'existingClients:', message.existingClients);
               setClientId(message.clientId);
               setOtherPeers(message.existingClients || []);
               break;
 
             case 'new-peer':
               // A new peer joined the room
-              setOtherPeers(prev => [...prev, message.clientId]);
+              console.log('👤 New peer joined:', message.clientId);
+              setOtherPeers(prev => {
+                const updated = [...prev, message.clientId];
+                console.log('Updated otherPeers:', updated);
+                return updated;
+              });
               break;
 
             case 'peer-left':
               // A peer left the room
-              setOtherPeers(prev => prev.filter(id => id !== message.clientId));
+              console.log('👋 Peer left:', message.clientId);
+              setOtherPeers(prev => {
+                const updated = prev.filter(id => id !== message.clientId);
+                console.log('Updated otherPeers:', updated);
+                return updated;
+              });
               break;
 
             default:

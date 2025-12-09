@@ -100,6 +100,8 @@ const ParticipantCard = ({
                 </svg>
                 <span>Muted</span>
               </span>
+            ) : !isLocal && !stream ? (
+              <span className="text-yellow-500">Connecting...</span>
             ) : (
               <span className="text-green-500">Connected</span>
             )}

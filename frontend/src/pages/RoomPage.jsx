@@ -107,7 +107,9 @@ const RoomPage = () => {
   };
 
   const status = getStatusDisplay();
-  const participantCount = 1 + Object.keys(peers).length;
+  
+  // Calculate participant count from WebSocket (more reliable than WebRTC peers)
+  const participantCount = 1 + (signalingSocket.otherPeers?.length || 0);
 
   // Debug logging
   console.log('=== RoomPage Debug ===');
@@ -232,12 +234,12 @@ const RoomPage = () => {
                   />
                 )}
 
-                {/* Remote peers */}
-                {Object.entries(peers).map(([peerId, peerData]) => (
+                {/* Remote peers - show all from WebSocket, use WebRTC stream if available */}
+                {signalingSocket.otherPeers?.map((peerId) => (
                   <ParticipantCard
                     key={peerId}
                     clientId={peerId}
-                    stream={peerData.stream}
+                    stream={peers[peerId]?.stream || null}
                     isLocal={false}
                     isMuted={false}
                   />
