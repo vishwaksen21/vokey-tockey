@@ -18,15 +18,41 @@ const ParticipantCard = ({
       console.log(`📢 Setting up audio for ${clientId}:`, {
         hasAudioTracks: stream.getAudioTracks().length,
         audioTrackEnabled: stream.getAudioTracks()[0]?.enabled,
-        audioTrackReadyState: stream.getAudioTracks()[0]?.readyState
+        audioTrackReadyState: stream.getAudioTracks()[0]?.readyState,
+        streamId: stream.id,
+        streamActive: stream.active
       });
       
-      audioRef.current.srcObject = stream;
-      audioRef.current.play()
-        .then(() => console.log(`✅ Audio playing for ${clientId}`))
-        .catch(err => {
-          console.error(`❌ Error playing audio for ${clientId}:`, err);
-        });
+      const audio = audioRef.current;
+      audio.srcObject = stream;
+      audio.volume = 1.0;
+      audio.muted = false;
+      
+      // Try to play immediately
+      const playPromise = audio.play();
+      
+      if (playPromise !== undefined) {
+        playPromise
+          .then(() => {
+            console.log(`✅ Audio playing for ${clientId}`);
+          })
+          .catch(err => {
+            console.error(`❌ Error playing audio for ${clientId}:`, err);
+            
+            // Retry after user interaction
+            const retryPlay = () => {
+              audio.play()
+                .then(() => {
+                  console.log(`✅ Audio playing for ${clientId} (after retry)`);
+                  document.removeEventListener('click', retryPlay);
+                })
+                .catch(e => console.error('Retry failed:', e));
+            };
+            
+            document.addEventListener('click', retryPlay, { once: true });
+            console.log('⚠️ Click anywhere to start audio playback');
+          });
+      }
     }
   }, [stream, isLocal, clientId]);
 
@@ -83,7 +109,12 @@ const ParticipantCard = ({
 
       {/* Audio element for remote streams */}
       {!isLocal && stream && (
-        <audio ref={audioRef} autoPlay playsInline />
+        <audio 
+          ref={audioRef} 
+          autoPlay 
+          playsInline 
+          muted={false}
+        />
       )}
     </div>
   );

@@ -138,6 +138,17 @@ const useWebRTC = (clientId, signalingSocket) => {
       console.log('ICE connection state for', peerId, ':', pc.iceConnectionState);
     };
 
+    // Handle negotiation needed (for renegotiation)
+    pc.onnegotiationneeded = async () => {
+      try {
+        console.log('Negotiation needed for', peerId);
+        // Only create offer if we're the one initiating the connection
+        // This prevents both sides from creating offers simultaneously
+      } catch (error) {
+        console.error('Error during negotiation:', error);
+      }
+    };
+
     peerConnectionsRef.current[peerId] = pc;
     
     // Add pending ICE candidates if any
