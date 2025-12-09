@@ -67,12 +67,15 @@ async def broadcast_to_room(room_id: str, message: dict, exclude: WebSocket = No
     
     dead_connections = set()
     
-    for client in rooms[room_id]:
+    for client in list(rooms[room_id]):  # Use list() to avoid modification during iteration
         if client == exclude:
             continue
         
         try:
-            await client.send_json(message)
+            if client.client_state.value == 1:  # 1 = CONNECTED
+                await client.send_json(message)
+            else:
+                dead_connections.add(client)
         except Exception as e:
             logger.error(f"Error broadcasting to client: {e}")
             dead_connections.add(client)
@@ -98,7 +101,10 @@ async def send_to_client(room_id: str, client_id: str, message: dict):
     client = client_ids[room_id][client_id]
     
     try:
-        await client.send_json(message)
+        if client.client_state.value == 1:  # 1 = CONNECTED
+            await client.send_json(message)
+        else:
+            logger.warning(f"Client {client_id} is not connected")
     except Exception as e:
         logger.error(f"Error sending to client {client_id}: {e}")
         await cleanup_client(client)
