@@ -1,4 +1,4 @@
-# 🎯 Vokey-Tockey - Technical Architecture
+# Vokey-Tockey - Technical Architecture
 
 ## System Flow Diagram
 
